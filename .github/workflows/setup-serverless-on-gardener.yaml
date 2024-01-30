@@ -1,173 +1,173 @@
 name: setup-serverless-on-gardener
 
 permissions:
-    # Required to receive OIDC tokens
-    # https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect#updating-your-actions-for-oidc
-    id-token: write
+  # Required to receive OIDC tokens
+  # https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect#updating-your-actions-for-oidc
+  id-token: write
 
 on:
-    workflow_dispatch:
+  workflow_dispatch:
 
 jobs:
-    # this job simulates control-plane usecase
-    # these ateps are needed to be added in the KEB or other tool that provision cluster
-    setup-cluster:
-        runs-on: ubuntu-latest
+  # this job simulates control-plane usecase
+  # these ateps are needed to be added in the KEB or other tool that provision cluster
+  setup-cluster:
+    runs-on: ubuntu-latest
 
-        env:
-            # gardener service account is used to provision and configure cluister
-            GARDENER_SA_CONTENT: ${{ secrets.GARDENER_SA_CONTENT }}
-            # path where value of GARDENER_SA_CONTENT will be located
-            GARDENER_SA_PATH: /tmp/gardener_sa.yaml
+    env:
+      # gardener service account is used to provision and configure cluister
+      GARDENER_SA_CONTENT: ${{ secrets.GARDENER_SA_CONTENT }}
+      # path where value of GARDENER_SA_CONTENT will be located
+      GARDENER_SA_PATH: /tmp/gardener_sa.yaml
 
-        steps:
+    steps:
 
-            - name: save kubeconfig
-              # save GARDENER_SA_CONTENT to the right file to use it later as kubeconfig for kubectl 
-              run: 'echo "$GARDENER_SA_CONTENT" > $GARDENER_SA_PATH'
+      - name: save kubeconfig
+        # save GARDENER_SA_CONTENT to the right file to use it later as kubeconfig for kubectl 
+        run: 'echo "$GARDENER_SA_CONTENT" > $GARDENER_SA_PATH'
 
-            - name: setup OpenIDConnectPreset
-              # create OpenIDConnectPreset resource that contains most important informations about OIDC
-              # this step should be setup once per gardener namespace
+      - name: setup OpenIDConnectPreset
+        # create OpenIDConnectPreset resource that contains most important informations about OIDC
+        # this step should be setup once per gardener namespace
 
-              # here is more info about this resource
-              # https://github.com/gardener/gardener/blob/master/docs/usage/openidconnect-presets.md
+        # here is more info about this resource
+        # https://github.com/gardener/gardener/blob/master/docs/usage/openidconnect-presets.md
 
-              # configuration is based on this article
-              # https://community.sap.com/t5/additional-blogs-by-sap/using-github-actions-openid-connect-in-kubernetes/ba-p/13542513
-              run: |
-                kubectl apply --kubeconfig $GARDENER_SA_PATH -f - <<EOF
-                apiVersion: settings.gardener.cloud/v1alpha1
-                kind: OpenIDConnectPreset
-                metadata:
-                    name:  github-test
-                spec:
-                    shootSelector:
-                        matchLabels:
-                        github-test-oidc: enabled
-                    server:
-                        clientID: gh-kubernetes-action
-                        issuerURL: https://token.actions.githubusercontent.com
-                        usernameClaim: sub
-                        usernamePrefix: "actions-oidc:"
-                        requiredClaims:
-                            repository: pPrecel/gardener-oidc-extension-poc
-                            workflow: setup-serverless-on-gardener
-                            ref: refs/heads/main
-                    weight: 90
-                EOF
+        # configuration is based on this article
+        # https://community.sap.com/t5/additional-blogs-by-sap/using-github-actions-openid-connect-in-kubernetes/ba-p/13542513
+        run: |
+          kubectl apply --kubeconfig $GARDENER_SA_PATH -f - <<EOF
+          apiVersion: settings.gardener.cloud/v1alpha1
+          kind: OpenIDConnectPreset
+          metadata:
+            name: github-test
+          spec:
+            shootSelector:
+              matchLabels:
+                github-test-oidc: enabled
+            server:
+              clientID: gh-kubernetes-action
+              issuerURL: https://token.actions.githubusercontent.com
+              usernameClaim: sub
+              usernamePrefix: "actions-oidc:"
+              requiredClaims:
+                repository: pPrecel/gardener-oidc-extension-poc
+                workflow: setup-serverless-on-gardener
+                ref: refs/heads/main
+            weight: 90
+          EOF
 
-            - name: create cluster
-              # create cluster with the `github-test-oidc: enabled` label to activate OpenIDConnection on it
-              run: |
-                kubectl apply --kubeconfig $GARDENER_SA_PATH -f - <<EOF
-                kind: Shoot
-                apiVersion: core.gardener.cloud/v1beta1
-                metadata:
-                    name: oidc-test
-                    labels:
-                        github-test-oidc: enabled
-                spec:
-                    provider:
-                        type: gcp
-                        infrastructureConfig:
-                            apiVersion: gcp.provider.extensions.gardener.cloud/v1alpha1
-                            kind: InfrastructureConfig
-                            networks:
-                                workers: 10.180.0.0/16
-                        controlPlaneConfig:
-                            apiVersion: gcp.provider.extensions.gardener.cloud/v1alpha1
-                            kind: ControlPlaneConfig
-                            zone: europe-west1-d
-                        workers:
-                          - name: worker-imbl6
-                            minimum: 1
-                            maximum: 2
-                            maxSurge: 1
-                            machine:
-                                type: c2-standard-8
-                                image:
-                                    name: gardenlinux
-                                    version: 1312.1.0
-                                architecture: amd64
-                            zones:
-                            - europe-west1-d
-                            cri:
-                                name: containerd
-                            volume:
-                                type: pd-balanced
-                                size: 50Gi
-                    networking:
-                        nodes: 10.180.0.0/16
-                        type: calico
-                    cloudProfileName: gcp
-                    region: europe-west1
-                    secretBindingName: wookiee-project
-                    kubernetes:
-                        version: 1.26.11
-                        enableStaticTokenKubeconfig: false
-                    purpose: evaluation
-                    addons:
-                        kubernetesDashboard:
-                            enabled: false
-                        nginxIngress:
-                            enabled: false
-                    maintenance:
-                        timeWindow:
-                            begin: 010000+0100
-                            end: 020000+0100
-                        autoUpdate:
-                            kubernetesVersion: true
-                            machineImageVersion: true
-                    hibernation:
-                        schedules: []
-                EOF
+      - name: create cluster
+        # create cluster with the `github-test-oidc: enabled` label to activate OpenIDConnection on it
+        run: |
+          kubectl apply --kubeconfig $GARDENER_SA_PATH -f - <<EOF
+          kind: Shoot
+          apiVersion: core.gardener.cloud/v1beta1
+          metadata:
+            name: oidc-test
+            labels:
+              github-test-oidc: enabled
+          spec:
+            provider:
+              type: gcp
+              infrastructureConfig:
+                apiVersion: gcp.provider.extensions.gardener.cloud/v1alpha1
+                kind: InfrastructureConfig
+                networks:
+                  workers: 10.180.0.0/16
+              controlPlaneConfig:
+                apiVersion: gcp.provider.extensions.gardener.cloud/v1alpha1
+                kind: ControlPlaneConfig
+                zone: europe-west1-d
+              workers:
+              - name: worker-imbl6
+                minimum: 1
+                maximum: 2
+                maxSurge: 1
+                machine:
+                  type: c2-standard-8
+                  image:
+                    name: gardenlinux
+                    version: 1312.1.0
+                  architecture: amd64
+                zones:
+                - europe-west1-d
+                cri:
+                  name: containerd
+                volume:
+                  type: pd-balanced
+                  size: 50Gi
+            networking:
+              nodes: 10.180.0.0/16
+              type: calico
+            cloudProfileName: gcp
+            region: europe-west1
+            secretBindingName: wookiee-project
+            kubernetes:
+              version: 1.26.11
+              enableStaticTokenKubeconfig: false
+            purpose: evaluation
+            addons:
+              kubernetesDashboard:
+                enabled: false
+              nginxIngress:
+                enabled: false
+            maintenance:
+              timeWindow:
+                begin: 010000+0100
+                end: 020000+0100
+              autoUpdate:
+                kubernetesVersion: true
+                machineImageVersion: true
+            hibernation:
+              schedules: []
+          EOF
 
-            - name: export API data
-              id: api-data
-              # apply-manifest job needs to has access to the API Server
-              # because of that this step exports API endpoint and API CA
-              run: |
-                API_CA=$(kubectl get --kubeconfig $GARDENER_SA_PATH secrets oidc-test.ca-cluster -ojson | jq -r '.data."ca.crt"')
-                API_ENDPOINT=$(kubectl get shoot oidc-test -ojson | jq -r '.status.advertisedAddresses[] | select(.name=="external") | .url')
+      - name: export API data
+        id: api-data
+        # apply-manifest job needs to has access to the API Server
+        # because of that this step exports API endpoint and API CA
+        run: |
+          API_CA=$(kubectl get --kubeconfig $GARDENER_SA_PATH secrets oidc-test.ca-cluster -ojson | jq -r '.data."ca.crt"')
+          API_ENDPOINT=$(kubectl get shoot oidc-test -ojson | jq -r '.status.advertisedAddresses[] | select(.name=="external") | .url')
 
-                echo "::add-mask::${API_CA}"
-                echo "::set-output name=api-ca::${API_CA}"
+          echo "::add-mask::${API_CA}"
+          echo "::set-output name=api-ca::${API_CA}"
 
-                echo "::add-mask::${API_ENDPOINT}"
-                echo "::set-output name=api-endpoint::${API_ENDPOINT}"
-        
-        outputs:
-            api-endpoint: ${{ steps.api-data.outputs.api-endpoint }}
-            api-ca: ${{ steps.api-data.outputs.api-ca }}
+          echo "::add-mask::${API_ENDPOINT}"
+          echo "::set-output name=api-endpoint::${API_ENDPOINT}"
+  
+    outputs:
+      api-endpoint: ${{ steps.api-data.outputs.api-endpoint }}
+      api-ca: ${{ steps.api-data.outputs.api-ca }}
 
-    # this job simulates CICD action on the users side
-    # these steps should be configured in the GH action that requested gardener cluster creation and use it
-    apply-manifest:
-        runs-on: ubuntu-latest
-        needs: [setup-cluster]
+  # this job simulates CICD action on the users side
+  # these steps should be configured in the GH action that requested gardener cluster creation and use it
+  apply-manifest:
+    runs-on: ubuntu-latest
+    needs: [setup-cluster]
 
-        steps:
+    steps:
 
-            - name: configure OIDC
-              id: create-oidc-token
-              # this step use envs given by GitHub thanks to `permission.id-token=write` configuration
-              # given id-token is exported 
-              run: |
-                AUDIENCE="gh-kubernetes-action" # clientID
-                OIDC_URL_WITH_AUDIENCE="$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE"
+      - name: configure OIDC
+        id: create-oidc-token
+        # this step use envs given by GitHub thanks to `permission.id-token=write` configuration
+        # given id-token is exported 
+        run: |
+          AUDIENCE="gh-kubernetes-action" # clientID
+          OIDC_URL_WITH_AUDIENCE="$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE"
 
-                IDTOKEN=$(curl \
-                    -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-                    -H "Accept: application/json; api-version=2.0" \
-                    "$OIDC_URL_WITH_AUDIENCE" | jq -r .value)
-                
-                echo "::add-mask::${IDTOKEN}"
-                echo "::set-output name=id-token::${IDTOKEN}"
+          IDTOKEN=$(curl \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            -H "Accept: application/json; api-version=2.0" \
+            "$OIDC_URL_WITH_AUDIENCE" | jq -r .value)
+          
+          echo "::add-mask::${IDTOKEN}"
+          echo "::set-output name=id-token::${IDTOKEN}"
 
-            - name: check permissions
-              run: |
-                kubectl auth can-i --list \
-                    --token="${{ steps.create-oidc-token.outputs.id-token }}" \
-                    --server="${{ needs.setup-cluster.outputs.api-endpoint }}" \
-                    --certificate-authority="${{ needs.setup-cluster.outputs.api-ca }}"
+      - name: check permissions
+        run: |
+          kubectl auth can-i --list \
+            --token="${{ steps.create-oidc-token.outputs.id-token }}" \
+            --server="${{ needs.setup-cluster.outputs.api-endpoint }}" \
+            --certificate-authority="${{ needs.setup-cluster.outputs.api-ca }}"
