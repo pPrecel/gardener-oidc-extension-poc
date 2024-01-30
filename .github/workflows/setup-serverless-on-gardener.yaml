@@ -24,8 +24,7 @@ jobs:
 
             - name: save kubeconfig
               # save GARDENER_SA_CONTENT to the right file to use it later as kubeconfig for kubectl 
-              run: |
-                echo $GARDENER_SA_CONTENT > $GARDENER_SA_PATH
+              run: 'echo "$GARDENER_SA_CONTENT" > $GARDENER_SA_PATH'
 
             - name: setup OpenIDConnectPreset
               # create OpenIDConnectPreset resource that contains most important informations about OIDC
