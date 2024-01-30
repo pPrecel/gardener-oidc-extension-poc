@@ -126,7 +126,7 @@ jobs:
       - name: wait for available API
         # wait until gardener will create ca secret and setup api
         run: |
-          kubectl wait --for=condition=APIServerAvailable shoot/oidc-test
+          kubectl wait --kubeconfig $GARDENER_SA_PATH --for=condition=APIServerAvailable shoot/oidc-test
 
       - name: export API data
         id: api-data
