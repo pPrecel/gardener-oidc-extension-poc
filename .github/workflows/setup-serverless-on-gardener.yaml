@@ -139,10 +139,11 @@ jobs:
           API_ENDPOINT=$(kubectl get --kubeconfig $GARDENER_SA_PATH shoot oidc-test -ojson | jq -r '.status.advertisedAddresses[] | select(.name=="external") | .url')
 
           echo "::add-mask::${API_CA}"
-          echo "api-ca=${API_CA}" >> $GITHUB_OUTPUT
+          echo api-ca="${API_CA}" >> $GITHUB_OUTPUT
 
           echo "::add-mask::${API_ENDPOINT}"
-          echo "api-endpoint=${API_ENDPOINT}" >> $GITHUB_OUTPUT
+          echo api-endpoint="${API_ENDPOINT}" >> $GITHUB_OUTPUT
+          echo "${API_ENDPOINT}"
   
     outputs:
       api-endpoint: ${{ steps.api-data.outputs.api-endpoint }}
