@@ -27,6 +27,7 @@ jobs:
         run: 'echo "$GARDENER_SA_CONTENT" > $GARDENER_SA_PATH'
 
       - name: setup OpenIDConnectPreset
+        if: false
         # create OpenIDConnectPreset resource that contains most important informations about OIDC
         # this step should be setup once per gardener namespace
 
@@ -58,6 +59,7 @@ jobs:
           EOF
 
       - name: create cluster
+        if: false
         # create cluster with the `github-test-oidc: enabled` label to activate OpenIDConnection on it
         run: |
           kubectl apply --kubeconfig $GARDENER_SA_PATH -f - <<EOF
