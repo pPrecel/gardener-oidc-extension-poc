@@ -140,10 +140,11 @@ jobs:
 
           echo "::add-mask::${API_CA}"
           echo api-ca="${API_CA}" >> $GITHUB_OUTPUT
+          echo "${#API_CA}"
 
           echo "::add-mask::${API_ENDPOINT}"
           echo api-endpoint="${API_ENDPOINT}" >> $GITHUB_OUTPUT
-          echo "${API_ENDPOINT}"
+          echo "${#API_ENDPOINT}"
   
     outputs:
       api-endpoint: ${{ steps.api-data.outputs.api-endpoint }}
@@ -176,6 +177,10 @@ jobs:
       - name: check permissions
         run: |
           kubectl auth can-i --list \
-            --token="${{ steps.create-oidc-token.outputs.id-token }}" \
-            --server="${{ needs.setup-cluster.outputs.api-endpoint }}" \
-            --certificate-authority="${{ needs.setup-cluster.outputs.api-ca }}"
+            --token="${TOKEN}" \
+            --server="${API_SERVER}" \
+            --certificate-authority="${API_CA}"
+        env:
+          TOKEN: "${{ steps.create-oidc-token.outputs.id-token }}"
+          API_SERVER: "${{ needs.setup-cluster.outputs.api-endpoint }}"
+          API_CA: "${{ needs.setup-cluster.outputs.api-ca }}"
