@@ -135,7 +135,7 @@ jobs:
         # apply-manifest job needs to has access to the API Server
         # because of that this step exports API endpoint and API CA
         run: |
-          API_CA=$(kubectl get --kubeconfig $GARDENER_SA_PATH secrets oidc-test.ca-cluster -ojson | jq -r '.data."ca.crt"' | base64 -d)
+          API_CA=$(kubectl get --kubeconfig $GARDENER_SA_PATH secrets oidc-test.ca-cluster -ojson | jq -r '.data."ca.crt"')
           
           echo data="${API_CA}" >> $GITHUB_OUTPUT
           echo "${#API_CA}"
@@ -179,7 +179,7 @@ jobs:
 
       - name: check permissions
         run: |
-          echo "$API_CA" > /tmp/ca.crt
+          echo "$API_CA" | base64 -d > /tmp/ca.crt
 
           kubectl auth can-i --list \
             --token="${TOKEN}" \
