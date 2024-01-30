@@ -126,6 +126,7 @@ jobs:
           EOF
         
       - name: wait for available API
+        if: false
         # wait until gardener will create ca secret and setup api
         run: sleep 60
 
