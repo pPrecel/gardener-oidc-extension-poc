@@ -122,6 +122,11 @@ jobs:
             hibernation:
               schedules: []
           EOF
+        
+      - name: wait for available API
+        # wait until gardener will create ca secret and setup api
+        run: |
+          kubectl wait --for=condition=APIServerAvailable shoot/oidc-test
 
       - name: export API data
         id: api-data
@@ -129,7 +134,7 @@ jobs:
         # because of that this step exports API endpoint and API CA
         run: |
           API_CA=$(kubectl get --kubeconfig $GARDENER_SA_PATH secrets oidc-test.ca-cluster -ojson | jq -r '.data."ca.crt"')
-          API_ENDPOINT=$(kubectl get shoot oidc-test -ojson | jq -r '.status.advertisedAddresses[] | select(.name=="external") | .url')
+          API_ENDPOINT=$(kubectl get --kubeconfig $GARDENER_SA_PATH shoot oidc-test -ojson | jq -r '.status.advertisedAddresses[] | select(.name=="external") | .url')
 
           echo "::add-mask::${API_CA}"
           echo "::set-output name=api-ca::${API_CA}"
