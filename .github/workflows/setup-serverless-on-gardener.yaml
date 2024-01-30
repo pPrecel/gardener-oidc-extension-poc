@@ -179,10 +179,12 @@ jobs:
 
       - name: check permissions
         run: |
+          echo "$API_CA" > /tmp/ca.crt
+          
           kubectl auth can-i --list \
             --token="${TOKEN}" \
             --server="${API_SERVER}" \
-            --certificate-authority="${API_CA}"
+            --certificate-authority="/tmp/ca.crt"
         env:
           TOKEN: "${{ steps.create-oidc-token.outputs.id-token }}"
           API_SERVER: "${{ needs.setup-cluster.outputs.api-endpoint }}"
