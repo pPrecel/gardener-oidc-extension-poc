@@ -19,6 +19,8 @@ jobs:
       GARDENER_SA_CONTENT: ${{ secrets.GARDENER_SA_CONTENT }}
       # path where value of GARDENER_SA_CONTENT will be located
       GARDENER_SA_PATH: /tmp/gardener_sa.yaml
+      # path to the kubeconfig used to connect with the cluster
+      CLUSTER_KUBECONFIG_PATH: /tmp/cluster_kubeconfig.yaml
 
     steps:
 
@@ -26,50 +28,24 @@ jobs:
         # save GARDENER_SA_CONTENT to the right file to use it later as kubeconfig for kubectl 
         run: 'echo "$GARDENER_SA_CONTENT" > $GARDENER_SA_PATH'
 
-      - name: setup OpenIDConnectPreset
-        if: false
-        # create OpenIDConnectPreset resource that contains most important informations about OIDC
-        # this step should be setup once per gardener namespace
-
-        # here is more info about this resource
-        # https://github.com/gardener/gardener/blob/master/docs/usage/openidconnect-presets.md
-
-        # configuration is based on this article
-        # https://community.sap.com/t5/additional-blogs-by-sap/using-github-actions-openid-connect-in-kubernetes/ba-p/13542513
-        run: |
-          kubectl apply --kubeconfig $GARDENER_SA_PATH -f - <<EOF
-          apiVersion: settings.gardener.cloud/v1alpha1
-          kind: OpenIDConnectPreset
-          metadata:
-            name: github-test
-          spec:
-            shootSelector:
-              matchLabels:
-                github-test-oidc: enabled
-            server:
-              clientID: gh-kubernetes-action
-              issuerURL: https://token.actions.githubusercontent.com
-              usernameClaim: sub
-              usernamePrefix: "actions-oidc:"
-              requiredClaims:
-                repository: pPrecel/gardener-oidc-extension-poc
-                workflow: setup-serverless-on-gardener
-                ref: refs/heads/main
-            weight: 90
-          EOF
-
       - name: create cluster
-        if: false
+        if: true
         # create cluster with the `github-test-oidc: enabled` label to activate OpenIDConnection on it
+
+        # shoot needs following fields with values:
+        # spec.kubernetes.enableStaticTokenKubeconfig: true <- we will use it to configure oidc on the cluster
+        # spec.extensions[].type: shoot-oidc-service <- enables oidc webhook on the cluster to use a few OpenIDConnect resources at the same time
+
+        # https://github.com/gardener/gardener-extension-shoot-oidc-service/blob/master/docs/usage/openidconnects.md
         run: |
           kubectl apply --kubeconfig $GARDENER_SA_PATH -f - <<EOF
           kind: Shoot
           apiVersion: core.gardener.cloud/v1beta1
           metadata:
             name: oidc-test
-            labels:
-              github-test-oidc: enabled
           spec:
+            extensions:
+            - type: shoot-oidc-service
             provider:
               type: gcp
               infrastructureConfig:
@@ -107,7 +83,7 @@ jobs:
             secretBindingName: wookiee-project
             kubernetes:
               version: 1.26.11
-              enableStaticTokenKubeconfig: false
+              enableStaticTokenKubeconfig: true
             purpose: evaluation
             addons:
               kubernetesDashboard:
@@ -126,9 +102,73 @@ jobs:
           EOF
         
       - name: wait for available API
-        if: false
+        if: true
         # wait until gardener will create ca secret and setup api
-        run: sleep 60
+        run: |
+          kubectl wait --kubeconfig $GARDENER_SA_PATH --for=condition=SystemComponentsRunning --timeout=30m shoot/oidc-test
+
+      - name: export cluster kubeconfig
+        # export cluster kubeconfig to manage it later
+        run: |
+          kubectl get secret --kubeconfig $GARDENER_SA_PATH oidc-test.kubeconfig -ojson | jq -r '.data.kubeconfig' | base64 -d > $CLUSTER_KUBECONFIG_PATH
+
+      - name: create OpenIDConnect resource
+        if: true
+        # create OpenIDConnect resource on the cluster that contains most important informations about OIDC
+        # this step should be setup once per gardener namespace
+
+        # here is more info about this resource
+        # https://gardener.cloud/docs/extensions/others/gardener-extension-shoot-oidc-service/openidconnects/
+
+        # configuration is based on this article
+        # https://community.sap.com/t5/additional-blogs-by-sap/using-github-actions-openid-connect-in-kubernetes/ba-p/13542513
+        run: |
+          kubectl apply --kubeconfig $CLUSTER_KUBECONFIG_PATH -f - <<EOF
+          apiVersion: authentication.gardener.cloud/v1alpha1
+          kind: OpenIDConnect
+          metadata:
+            name: github-oidc-test
+          spec:
+            clientID: gh-kubernetes-action
+            issuerURL: https://token.actions.githubusercontent.com
+            usernameClaim: sub
+            usernamePrefix: "actions-oidc:"
+            requiredClaims:
+              repository: pPrecel/gardener-oidc-extension-poc
+              workflow: setup-serverless-on-gardener
+              ref: refs/heads/main
+          EOF
+        
+      - name: create Role and RoleBinding resources
+        if: true
+        # create following resources to give access for the open id connection
+        run: |
+          kubectl apply --kubeconfig $CLUSTER_KUBECONFIG_PATH -f - <<EOF
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: Role
+          metadata:
+            name: github-oidc-role
+          rules:
+            - apiGroups: [""]
+              resources: ["pods"]
+              verbs: ["get", "watch", "list"]
+            - apiGroups: ["apps"]
+              resources: ["deployments"]
+              verbs: ["get", "watch", "list", "create", "update", "delete"]
+          ---
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: RoleBinding
+          metadata:
+            name: github-oidc-binding
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: Role
+            name: github-oidc-role
+          subjects:
+            - apiGroup: rbac.authorization.k8s.io
+              kind: User
+              name: actions-oidc:repo:pPrecel/gardener-oidc-extension-poc:ref:refs/heads/main
+          EOF
 
       - name: export API ca
         id: api-ca
@@ -140,7 +180,6 @@ jobs:
           echo data="${API_CA}" >> $GITHUB_OUTPUT
           echo "${#API_CA}"
 
-          
       - name: export API endpoint
         id: api-endpoint
         run: |
