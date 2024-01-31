@@ -29,7 +29,7 @@ jobs:
         run: 'echo "$GARDENER_SA_CONTENT" > $GARDENER_SA_PATH'
 
       - name: create cluster
-        if: true
+        if: false
         # create cluster with the `github-test-oidc: enabled` label to activate OpenIDConnection on it
 
         # shoot needs following fields with values:
@@ -105,7 +105,7 @@ jobs:
         if: true
         # wait until gardener will create ca secret and setup api
         run: |
-          kubectl wait --kubeconfig $GARDENER_SA_PATH --for=condition=SystemComponentsRunning --timeout=30m shoot/oidc-test
+          kubectl wait --kubeconfig $GARDENER_SA_PATH --for=condition=SystemComponentsHealthy --timeout=30m shoot/oidc-test
 
       - name: export cluster kubeconfig
         # export cluster kubeconfig to manage it later
